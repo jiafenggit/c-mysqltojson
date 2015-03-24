@@ -15,21 +15,12 @@ typedef unsigned int uint;
 #define SMART_STR_USE_REALLOC   // Define this to not use zend perealloc
 #include "php_smart_str.h"
 
-// Ugly hack to silent Splint when it doesn't follow multi-dimensional pointers
-#ifdef S_SPLINT_S
-extern void assertSet(/*@special@*/ /*@sef@*/ /*@unused@*/ void *p_x) /*@sets p_x, *p_x@*/ ;
-
-#else
-# define assertSet(x) ;
-#endif
-
 static void close_mysql_with_error(MYSQL *connection)
 {
     const char* error_message = mysql_error(connection);
 
-    /*@-bounds@*/ (void) FCGI_fprintf(FCGI_stderr, "%s\n", error_message); /*@+bounds@*/
+    (void) FCGI_fprintf(FCGI_stderr, "%s\n", error_message);
 
-    //fprintf(stderr, "%s\n", mysql_error(connection));    // Short version, will not be accepted by Splint
     free((void *) error_message);
     mysql_close(connection);
 }
@@ -38,11 +29,10 @@ static void close_mysql_with_error(MYSQL *connection)
  * Get array of strings of fields from result, like ["id", "title", ...]
  *
  * @param MYSQL_RES result
+ * @return string array
  */
-static /*@only@*/ /*@null@*/ smart_str** get_field_names(/*@notnull@*/ MYSQL_RES *my_result, int num_fields)
-    /*@ensures maxRead(result) == num_fields @*/
+static smart_str** get_field_names(MYSQL_RES *my_result, int num_fields)
 {
-
 
     smart_str** fields;   // Array of pointers
     MYSQL_FIELD *field = NULL;
@@ -80,22 +70,22 @@ static /*@only@*/ /*@null@*/ smart_str** get_field_names(/*@notnull@*/ MYSQL_RES
         }
     }
 
-    assertSet(fields);
-
     return fields;
-
 }
 
-/*@-unqualifiedtrans@*/
-static void free_field_names(/*@notnull@*/ /*@special@*/ /*@only@*/ smart_str** strings, int size)
-    /*@requires maxRead(strings) >= size @*/
-    /*@releases strings@*/
+/**
+ * Free field names
+ *
+ * @param smart_str** String array
+ * @param int size Size of string array
+ * @return void
+ */
+static void free_field_names(smart_str** strings, int size)
 {
 
     int i;
     for (i = 0; i < size; i++)
     {
-        //smart_str_free(strings[i]);
         free(strings[i]->c);
         free(strings[i]);
     }
@@ -103,43 +93,14 @@ static void free_field_names(/*@notnull@*/ /*@special@*/ /*@only@*/ smart_str** 
     free(strings);
 
 }
-/*@+unqualifiedtrans@*/
-
-/**
- * Calculate string length of JSON from a MySQL result
- *
- * @param result Result from a MySQL query
- * @param field_names array of strings
- */
-/*
-   static int json_strlen(MYSQL_RES* result, char** field_names)
-   {
-   int length = 0;
-   int i = 0;
-   int num_fields = (int) mysql_num_fields(result);
-   MYSQL_ROW row;
-
-   length++; // [
-
-   while ((row = mysql_fetch_row(result, num_fields)))
-   {
-   length++; // {
-   for (i = 0; i < num_fields; i++)
-   {
-   length++; // "
-   }
-   }
-
-   return length;
-   }
-   */
 
 /**
  * Takes a result from a MySQL query and encode it as a JSON string.
  * Returns null if no result is found.
  *
  * @param MYSQL_RES result
- * @return char*
+ * @param smart_str* json Return variable
+ * @return void
  */
 static void result_to_json(MYSQL_RES *result, smart_str* json)
 {
@@ -235,74 +196,28 @@ static void result_to_json(MYSQL_RES *result, smart_str* json)
  */
 int main(void)
 {
-    //char* s = getenv("SERVER_NAME");    // This returns null
     MYSQL*  connection = NULL;
     MYSQL_RES* result = NULL;
     size_t newlen;
     smart_str json = {0, 0, 0};
     smart_str_alloc(&json, 1024 * 20, 0);
 
-    /*
-    // Test smart_str
-    int i;
-    smart_str* sstr;
-    sstr = malloc(sizeof(smart_str));
-    smart_str_appendl(sstr, "null", 4);
-    smart_str_0(sstr);
-
-    // Test smart_str array
-    smart_str** arr;
-    arr = malloc(10 * sizeof(smart_str*));
-    for (i = 0; i < 10; i++)
-    {
-    arr[i] = malloc(sizeof(smart_str));
-    if (arr[i] == NULL)
-    {
-    continue;
-    }
-    else
-    {
-    smart_str_append_long(arr[i], i);
-    smart_str_0(sstr);
-    }
-    }
-    */
-
     // Main loop of CGI script. Each connection will begin here.
     while(FCGI_Accept() >= 0)
     {
-        // Test smart_str
-        /*
-           FCGI_printf("%s\n", sstr->c);
-           for (i = 0; i < 10; i++)
-           {
-           FCGI_printf("%s\n", arr[i]->c);
-           }
-           continue;
-           */
-
         // Header needed
         (void) FCGI_printf("Content-type: text/html\r\n\r\n");
-
-        //FCGI_printf("%s\n", sstr->c);
-        //json = malloc(sizeof(smart_str));
-
-        //if (json == NULL)
-        //{
-        //(void) FCGI_printf("Error: Could not allocate memory for smart_str");
-        //continue;
-        //}
 
         connection = mysql_init(NULL);
 
         if (connection == NULL)
         {
-            /*@-bounds@*/ (void) FCGI_fprintf(FCGI_stderr, "Could not connect to MySQL: %s\n", mysql_error(connection)); /*@+bounds@*/
+            (void) FCGI_fprintf(FCGI_stderr, "Could not connect to MySQL: %s\n", mysql_error(connection));
             continue;
         }
 
         // Connect to database
-        if (mysql_real_connect(connection, "localhost", "root", "noten", "smart_dev", 0, NULL, 0) == NULL)
+        if (mysql_real_connect(connection, "localhost", "root", "password", "smart_dev", 0, NULL, 0) == NULL)
         {
             close_mysql_with_error(connection);
             continue;
